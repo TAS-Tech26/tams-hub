@@ -2,10 +2,11 @@
 
 
 from django.conf import settings
+from django.db import IntegrityError
 
-from .models import TamsTeam
+from .models import School, TamsTeam
 
-import os, requests
+import os, requests, secrets, string
 
 
 class PhaseOrchestrator:
@@ -69,3 +70,36 @@ class PhaseOrchestrator:
             return False, f"B2B Error: {b2b_response.text}"
 
         return True, "Phase 1 complete. B2B wallets successfully synced."
+
+class IdentityManager:
+
+    @staticmethod
+    def generate_secure_code(length = 6):
+        alphabet = string.ascii_uppercase + string.digits
+
+        return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+    @staticmethod
+    def register_team(team_name, school_id, event_name):
+        """Registers a team, generating a unique code for the specific event."""
+
+        try:
+            school = School.objects.get(id = school_id)
+        except School.DoesNotExist:
+
+            return None, "Invalid School ID."
+
+        max_retries = 5
+
+        for _ in range(max_retries):
+            # Will trigger IntegrityErr if (team_code, event_name) constraint is violated.
+            team_code = IdentityManager.generate_secure_code()
+
+            try:
+                team = TamsTeam.objects.create(team_code = team_code, name = team_name, school = school, event_name = event_name)
+
+                return team, 'Success'
+            except IntegrityError:
+                continue # Loop & try again with a new code
+
+        return None, "Failed to generate a unique team code after maximum retries."
