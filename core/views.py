@@ -7,10 +7,10 @@ from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import EventStanding, School, TamsTeam
-from .services import PhaseOrchestrator
+from .models import EventStanding, TamsTeam
+from .services import PhaseOrchestrator, IdentityManager
 
-import hmac, json, os
+import hmac, json
 
 
 def verify_hub_secret(request):
@@ -35,6 +35,37 @@ def verify_team_code(request, team_code, event_name):
     else:
 
         return JsonResponse({'error' : f"Team code {team_code} is NOT registered for event {event_name}."}, status = 404)
+
+@csrf_exempt
+@require_POST
+def register_new_team(request):
+    if not verify_hub_secret(request):
+
+        return JsonResponse({'error' : "Unauthorized request"}, status = 403)
+
+    try:
+        data = json.loads(request.body)
+        team_name = data.get('team_name')
+        school_id = data.get('school_id')
+        event_name = data.get('event_name')
+
+        if not all([team_name, school_id, event_name]):
+
+            return JsonResponse({'error' : "Missing required fields."}, status = 400)
+
+        team, message = IdentityManager.register_team(team_name, school_id, event_name)
+
+        if team:
+
+            return JsonResponse({'message' : "Team registered successfully.", 'team_code' : team.team_code, 'event_name' : team.event_name}, status = 201)
+
+        else:
+
+            return JsonResponse({'error' : message}, status = 500)
+
+    except json.JSONDecodeError:
+
+        return JsonResponse({'error' : "Invalid JSON"}, status = 400)
 
 @csrf_exempt
 @require_POST
