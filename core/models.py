@@ -11,10 +11,14 @@ class School(models.Model):
 
 class TamsTeam(models.Model):
 
-    team_code = models.CharField(max_length = 10, unique = True, db_index = True)
+    team_code = models.CharField(max_length = 10, db_index = True)
     name = models.CharField(max_length = 255)
     school = models.ForeignKey(School, on_delete = models.CASCADE)
     event_name = models.CharField(max_length = 255)
+
+    class Meta:
+
+        constraints = [models.UniqueConstraint(fields = ['team_code', 'event_name'], name = 'unique_team_per_event')]
 
 class EventStanding(models.Model):
 
