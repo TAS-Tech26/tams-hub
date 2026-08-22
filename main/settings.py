@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
+SECRET_KEY = os.environ.get('SECRET_KEY')
 HUB_SECRET_KEY = os.environ.get('HUB_SECRET_KEY')
 KAHOOT_SECRET_KEY = os.environ.get('KAHOOT_SECRET_KEY')
 B2B_HOST_SECRET = os.environ.get('B2B_HOST_SECRET')
@@ -28,10 +28,12 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'core'
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -90,3 +92,5 @@ USE_TZ = True
 
 
 STATIC_URL = 'static/'
+
+CORS_ALLOW_ALL_ORIGINS = True 
