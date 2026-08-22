@@ -31,3 +31,13 @@ class EventStanding(models.Model):
     class Meta:
 
         ordering = ['rank']
+
+class EventRoom(models.Model):
+
+    event_name = models.CharField(max_length = 255, db_index = True)
+    room_code = models.CharField(max_length = 10, unique = True)
+    is_active = models.BooleanField(default = False)
+
+    def __str__(self):
+
+        return f"{self.event_name} - {self.room_code} (Active: {self.is_active})"
