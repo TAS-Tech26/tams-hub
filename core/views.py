@@ -3,14 +3,14 @@
 
 from django.conf import settings
 from django.http import JsonResponse
-from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import EventStanding, TamsTeam
+from .models import EventRoom, EventStanding, TamsTeam
+from .serializers import ClientLoginSerializer
 from .services import PhaseOrchestrator, IdentityManager
 
-import hmac, json
+import datetime, hmac, json, jwt
 
 
 def verify_hub_secret(request):
@@ -93,20 +93,19 @@ def ingest_phase_2_results(request, event_name):
         data = json.loads(request.body)
         results = data.get('results', [])
 
-        standings_to_create = []
-
         for res in results:
             code = res.get('team_code')
         
-            team = TamsTeam.objects.filter(team_code = code).first()
+            team = TamsTeam.objects.filter(team_code = code, event_name = event_name).first()
 
             if team:
-                standings_to_create.append(EventStanding(event_name = event_name, rank = res['rank'], team = team, final_score_or_assets = str(res.get('assets', ''))))
+                EventStanding.objects.update_or_create(
+                    team = team,
+                    event_name = event_name,
+                    defaults = {'rank' : res['rank'], 'final_score_or_assets' : str(res.get('assets', ''))}
+                )
 
-        EventStanding.objects.filter(event_name = event_name).delete()
-        EventStanding.objects.bulk_create(standings_to_create)
-
-        return JsonResponse({'message' : "Phase 2 results locked & saved."}, status = 200)
+            return JsonResponse({'message' : "Phase 2 results locked & saved."}, status = 200)
     except json.JSONDecodeError:
 
         return JsonResponse({'error' : "Invalid JSON."}, status = 400)
@@ -128,3 +127,37 @@ def export_event_standings(request, event_name):
     } for standing in standings]
 
     return JsonResponse({'event_name' : event_name, 'leaderboard' : payload}, status = 200)
+
+@csrf_exempt
+@require_POST
+def client_lobby_login(request):
+    """Client-facing endpoint. Issues a JWT that encodes the team PIN within it. Other services can get the team PIN encoded within the JWT & verify the team making the req."""
+
+    serializer = ClientLoginSerializer(request.body)
+
+    if not serializer.is_valid():
+
+        return JsonResponse({'error' : serializer.errors}, status = 400)
+
+    data = serializer.validated_data
+
+    room = EventRoom.objects.filter(room_code = data['room_code'], is_active = True).first()
+
+    if not room:
+
+        return JsonResponse({'error' : "Invalid or inactive room code."}, status = 403)
+
+    team = TamsTeam.objects.filter(team_code = data['team_code'], event_name = room.event_name).first()
+
+    if not team:
+
+        return JsonResponse({'error' : "Invalid team PIN for this event."}, status = 403)
+
+    token = jwt.encode({
+        'team_code' : team.team_code,
+        'event_name' : room.event_name,
+        'exp' : datetime.datetime.utcnow() + datetime.timedelta(hours = 12)
+    }, settings.HUB_SECRET_KEY, algorithm = 'HS256')
+
+    return JsonResponse({'token' : token, 'team_name' : team.name, 'event_name' : room.event_name}, status = 200)
+    
