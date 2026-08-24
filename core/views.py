@@ -2,6 +2,7 @@
 
 
 from django.conf import settings
+from django.contrib.auth import authenticate
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -105,7 +106,7 @@ def ingest_phase_2_results(request, event_name):
                     defaults = {'rank' : res['rank'], 'final_score_or_assets' : str(res.get('assets', ''))}
                 )
 
-            return JsonResponse({'message' : "Phase 2 results locked & saved."}, status = 200)
+        return JsonResponse({'message' : "Phase 2 results locked & saved."}, status = 200)
     except json.JSONDecodeError:
 
         return JsonResponse({'error' : "Invalid JSON."}, status = 400)
@@ -160,4 +161,42 @@ def client_lobby_login(request):
     }, settings.HUB_SECRET_KEY, algorithm = 'HS256')
 
     return JsonResponse({'token' : token, 'team_name' : team.name, 'event_name' : room.event_name}, status = 200)
-    
+
+@csrf_exempt
+@require_POST
+def host_login(request):
+    """Centralized ID provider endpoint for tourney hosts. Issues a signed JWT valid across all microservices."""
+
+    try:
+        data = json.loads(request.body)
+        username = data.get('username').strip()
+        password = data.get('password')
+
+        if not username or not password:
+
+            return JsonResponse({'error' : "Username & password are required."}, status = 400)
+
+        user = authenticate(request, username = username, password = password)
+
+        if user is None or not user.is_active:
+
+            return JsonResponse({'error' : "Invalid credentials."}, status = 401)
+
+        if not user.is_staff:
+
+            return JsonResponse({'error' : "Access denied. Host privileges required."}, status = 403)
+
+        payload = {
+            'role' : 'host',
+            'user_id' : user.id,
+            'username' : username,
+            'is_staff' : True,
+            'exp' : datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours = 12)
+        }
+
+        token = jwt.encode(payload, settings.HUB_SECRET_KEY, algorithm = 'HS256')
+
+        return JsonResponse({'token' : token, 'username' : user.username, 'role' : 'host'}, status = 200)
+    except json.JSONDecodeError:
+
+        return JsonResponse({'error' : "Invalid JSON format."}, status = 400)
